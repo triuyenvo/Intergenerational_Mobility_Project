@@ -9,16 +9,18 @@ This project is part of my Data Analytics capstone course at Denison University.
 ## 3. Prerequisites
 ### 3.1. Key Variables
 - Inequality: measured through the Gini index (The World Bank, 2023)
-- Relative Mobility: specific metrics  to be updated
-- Absolute Mobility
+- Relative Mobility & Absolute Mobility: specific metrics  to be derived, potentially though one of the following groups
+  + 12 BH variables
+  + 30ish TM variables
 - Region
 ### 3.2. Softwares
 - Tableau 2023.3 to edit or Tableau web to view outputs
 - R version 4.3.3
 ### 3.3. R pacakages
-- Dyplr
-- tidyverse
-- lme4
+- dyplr
+- ggplot2
+- sqldf
+- kohonen
   to be updated
 ## 4. Data
 - Global Database On Intergenerational Mobility  [Link](https://datacatalog.worldbank.org/search/dataset/0050771/global-database-on-intergenerational-mobility)
