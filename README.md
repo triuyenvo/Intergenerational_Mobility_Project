@@ -24,7 +24,7 @@ This project is part of my Data Analytics capstone course at Denison University.
   to be updated
 ## 4. Data
 - Global Database On Intergenerational Mobility  [Link](https://datacatalog.worldbank.org/search/dataset/0050771/global-database-on-intergenerational-mobility)
-- Gini (retrieval date: to be updated) index(https://data.worldbank.org/indicator/SI.POV.GINI?end=1999&start=1986&view=map&year=2009) 
+- Gini  index  [Link](https://data.worldbank.org/indicator/SI.POV.GINI?end=1999&start=1986&view=map&year=2009) (retrieval date: Feb 28th, 2024)
 ## 5. Documents
 - Code file (to be updated)
 - Paper (to be updated)
