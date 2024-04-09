@@ -1,0 +1,541 @@
+---
+title: 'IGM rough code'
+author: 'Josh Vo'
+date: 'Feb 28, 2024'
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# 1. Setup
+```{r Setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+# set working directory
+setwd("C:/Users/vo_j4/Desktop/github data")
+# load  datasets
+IGM_data <-read.csv("GDIM_2023_03.csv")
+gini_data <- read.csv("gini 1991-2017 feb 22, 2024.csv")
+
+# load packages
+library(leaps)
+library(dplyr)
+library(ggplot2)
+library(ggforce)
+library(stats)
+library(ggalt)
+library(plot3D)
+library(plotly)
+library(gridExtra) 
+library(cluster)
+library(factoextra)
+library(caret)
+```
+
+# 2. Cleaning data
+## 2.1. Gini dataset
+```{r}
+head(gini_data)
+# Rename the variables
+colnames(gini_data)[colnames(gini_data) == "X1991..YR1991."] <- "1991"
+colnames(gini_data)[colnames(gini_data) == "X1992..YR1992."] <- "1992"
+colnames(gini_data)[colnames(gini_data) == "X1993..YR1993."] <- "1993"
+colnames(gini_data)[colnames(gini_data) == "X1994..YR1994."] <- "1994"
+colnames(gini_data)[colnames(gini_data) == "X1995..YR1995."] <- "1995"
+colnames(gini_data)[colnames(gini_data) == "X1996..YR1996."] <- "1996"
+colnames(gini_data)[colnames(gini_data) == "X1997..YR1997."] <- "1997"
+colnames(gini_data)[colnames(gini_data) == "X1998..YR1998."] <- "1998"
+colnames(gini_data)[colnames(gini_data) == "X1999..YR1999."] <- "1999"
+colnames(gini_data)[colnames(gini_data) == "X2000..YR2000."] <- "2000"
+colnames(gini_data)[colnames(gini_data) == "X2001..YR2001."] <- "2001"
+colnames(gini_data)[colnames(gini_data) == "X2002..YR2002."] <- "2002"
+colnames(gini_data)[colnames(gini_data) == "X2003..YR2003."] <- "2003"
+colnames(gini_data)[colnames(gini_data) == "X2004..YR2004."] <- "2004"
+colnames(gini_data)[colnames(gini_data) == "X2005..YR2005."] <- "2005"
+colnames(gini_data)[colnames(gini_data) == "X2006..YR2006."] <- "2006"
+colnames(gini_data)[colnames(gini_data) == "X2007..YR2007."] <- "2007"
+colnames(gini_data)[colnames(gini_data) == "X2008..YR2008."] <- "2008"
+colnames(gini_data)[colnames(gini_data) == "X2009..YR2009."] <- "2009"
+colnames(gini_data)[colnames(gini_data) == "X2010..YR2010."] <- "2010"
+colnames(gini_data)[colnames(gini_data) == "X2011..YR2011."] <- "2011"
+colnames(gini_data)[colnames(gini_data) == "X2012..YR2012."] <- "2012"
+colnames(gini_data)[colnames(gini_data) == "X2013..YR2013."] <- "2013"
+colnames(gini_data)[colnames(gini_data) == "X2014..YR2014."] <- "2014"
+colnames(gini_data)[colnames(gini_data) == "X2015..YR2015."] <- "2015"
+colnames(gini_data)[colnames(gini_data) == "X2016..YR2016."] <- "2016"
+colnames(gini_data)[colnames(gini_data) == "X2017..YR2017."] <- "2017"
+
+# empty NAs cells instead of ",,"
+columns_to_process <- colnames(gini_data)[5:ncol(gini_data)] ## specify the columns to be processed (from "1991" to "2017")
+
+for (col in columns_to_process) { ## loop through each specified column and replace ".." with ""
+  gini_data[gini_data[[col]] == "..", col] <- ""
+  gini_data[[col]] <- as.numeric(gini_data[[col]])
+}
+```
+
+## 2.2. IGM dataset
+
+```{r, warning=FALSE}
+
+library(dplyr)
+
+# group by country and calculate the mean for numerical variables in columns 16 to 90
+numerical <- IGM_data %>%
+  group_by(country) %>%
+  summarize(across(15:89, ~mean(., na.rm = TRUE)))
+
+# transfer over categorical variables in columns 1 to 12 because they're all identical
+categorical <- IGM_data  %>%
+  group_by(country) %>%
+  summarize(across(0:11, ~first(.)))
+
+# merge 2 datasets into df
+df <- merge( categorical,numerical, by = "country")
+ 
+# add a new variable "gini" to df
+df$gini <- NA
+
+for (i in 1:nrow(df)) {
+  # extract year, country, code columns
+  country_code <- df$code[i]
+  temp_year <- as.character(df$year[i])
+  
+  # find corresponding column in gini_data
+  col_name <- temp_year  # Assuming column names are just the years
+  
+  # subset gini_data based on country code
+  matching_rows <- gini_data$Country.Code == country_code
+  
+  # check if there are any matching rows
+  if (any(matching_rows)) {
+    # match the Country.Code and assign the value to "gini"
+    df$gini[i] <- gini_data[matching_rows, col_name]
+  } else {
+    # if no matching rows, assign NA
+    df$gini[i] <- "none"
+  }
+}
+
+df$gini
+# quick look at gini
+summary(df$gini)
+
+```
+
+### 2.2.1. Gini NAs processing
+
+```{r}
+# see which countries had NA value and which year that was
+na_countries <- data.frame(cbind(df[is.na(df$gini), c("country", "year")]))
+na_countries
+
+# after manually select the appropriate value for each of those NAs,add them to our dataset 
+# reference Methods section and README file for further details
+
+NA_countries <- c("Afghanistan", "Australia", "Azerbaijan", "Bosnia and Herzegovina", "Cambodia", "Ethiopia", "Japan", "Kenya", "Malawi", "Mali", "Mexico", "Nepal", "New Zealand", "Nicaragua", "Pakistan", "Philippines", "Solomon Islands", "Taiwan, China", "Tajikistan", "Tanzania", "Tunisia", "Uganda", "Uzbekistan", "Venezuela, RB")
+NA_gini <- c(31.6, 32.3, 26.6, 33, 30.76, 35, 32.9, 40.8, 45.5, 33, 47.2, 32.8, 36.2, 46.2, 28.7, 47.7, 37.1,33.8, 34, 37.8, 32.8, 41, 31.2, 39)
+# match country names with corresponding gini values
+for (i in 1:length(NA_countries)) { 
+  df$gini[df$country == NA_countries[i]] <- NA_gini[i]
+}
+df$gini <- as.numeric(df$gini)
+
+```
+
+# 3. EDA
+
+```{r} 
+# checking correlation between all BH variables
+cor(df[47:58])
+
+ggplot(as.data.frame(as.table(cor(df[47:58]))), aes(Var1, Var2, fill = Freq)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "BH Variables Correlation Heatmap", x = "", y = "")
+
+# checking correlation between all TM variables
+cor(df[63:87])
+
+ggplot(as.data.frame(as.table(cor(df[63:87]))), aes(Var1, Var2, fill = Freq)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "TM Variables Correlation Heatmap", x = "", y = "")
+  
+```
+
+# 4. K means clustering on BH variables - Validation
+
+After running K-means clustering on the 12 BH variables, we perform 2 levels of validations:
+
+- Level 1: Run Principle Component Analysis (PCA) on the BH variables and plot the clusters against the first 2-3 PCs. We can check whether there's clear margins between the clusters.
+
+- Level 2: Check descriptive qualities of each cluster through variables such as gini index and pre-derived IGM measures (CAT, YOS, COR, BETA).We run ANOVA to see if there's statistically significant difference between each cluster.
+
+## 4.1. K means clustering on BH variables
+
+```{r}
+# create plot of number of clusters vs total within sum of squares
+fviz_nbclust(scale(df[47:58]), kmeans, method = "wss")
+
+# k-means with k = 4
+set.seed(123)
+km.res_BH <- kmeans(scale(df[47:58]), 4, nstart = 25)
+km.res_BH
+
+# append cluster assignment to df
+df <- cbind(df, BH_cluster = factor(km.res_BH$cluster))
+df$BH_cluster
+```
+
+## 4.2. Level 1 validation on K means clustering - PCA & visualization
+```{r}
+# run PCA and take 2-3 1st PCs to visualize clusters
+pca_BH <- prcomp(scale(df[47:58]))
+summary(pca_BH)
+# 1st 2 PCs make up 84.8% cumulative proportion; 1st  3 make up 93.4%
+
+# plot clusters using 1st 2 PCs
+pcaBH_df <- data.frame(PC1 = pca_BH$x[,1],  
+                     PC2 = pca_BH$x[,2],
+                     PC3 = pca_BH$x[,3],
+                     BH_cluster = df$BH_cluster,
+                     country = df$country)
+
+BH_two_PCs <- ggplot(pcaBH_df, aes(x = PC1, y = PC2, color = BH_cluster)) +
+  geom_point() +
+  labs(title = "BH Clusters Against first 2 Principle Components",
+       x = "Principle Component 1",
+       y = "Principle Component 2",
+       color = "Clusters based on BH variables",
+       fill = "Clusters based on BH variables") +
+  theme_minimal()
+BH_two_PCs
+
+# plot clusters using 1st 3 PCs
+ BH_three_PCs <- plot_ly(data = pcaBH_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~factor(BH_cluster),
+        type = "scatter3d", mode = "markers", marker = list(size = 5)) %>%
+  layout(scene = list(xaxis = list(title = "Principle Component 1"),
+                      yaxis = list(title = "Principle Component 2"),
+                      zaxis = list(title = "Principle Component 3")),
+         legend = list(title=list(text='<b> Clusters based on BH variables')),
+         title = "3D Scatter Plot of PCA with BH Clusters")
+BH_three_PCs
+```
+
+## 4.3. Level 2 validation on K means clustering - Descriptive using ANOVA and Posthocs
+
+```{r}
+# CAT
+catBH_anova <- aov(CAT ~ BH_cluster, data = df)
+summary(catBH_anova)
+catBH_posthoc <- TukeyHSD(catBH_anova)
+catBH_posthoc
+
+# YOS
+yosBH_anova <- aov(YOS ~ BH_cluster, data = df)
+summary(yosBH_anova)
+yosBH_posthoc <- TukeyHSD(yosBH_anova)
+yosBH_posthoc
+
+# 1-COR
+corBH_anova <- aov(1-COR ~ BH_cluster, data = df)
+summary(corBH_anova)
+corBH_posthoc <- TukeyHSD(corBH_anova)
+corBH_posthoc
+
+# 1-BETA
+betaBH_anova <- aov(1-BETA ~ BH_cluster, data = df)
+summary(betaBH_anova)
+betaBH_posthoc <- TukeyHSD(betaBH_anova)
+betaBH_posthoc
+
+# Gini
+gini_BH_anova <- aov(gini ~ BH_cluster, data = df)
+summary(gini_BH_anova)
+gini_BH_posthoc <- TukeyHSD(gini_BH_anova)
+gini_BH_posthoc
+
+# calculate mean and standard deviation for CAT scores within each cluster
+catBH_summary <- df %>%
+  group_by(BH_cluster) %>%
+  summarize(mean_CAT = mean(CAT),
+            sd_CAT = sd(CAT),
+            n = n()) %>%
+  mutate(se = sd_CAT / sqrt(n),
+         ci_lower = mean_CAT - qt(0.975, n - 1) * se,
+         ci_upper = mean_CAT + qt(0.975, n - 1) * se)
+catBH_summary
+
+# create jittered strip plot with mean points and error bars
+catBH_plot <- ggplot(df, aes(x = BH_cluster, y = CAT, color = BH_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +  
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "CAT", title = "CAT Scores by BH Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+catBH_plot
+
+# calculate mean and standard deviation for YOS within each cluster
+yosBH_summary <- df %>%
+  group_by(BH_cluster) %>%
+  summarize(mean_YOS = mean(YOS),
+            sd_YOS = sd(YOS))
+yosBH_summary
+
+# create jittered strip plot with mean lines
+yosBH_plot <- ggplot(df, aes(x = BH_cluster, y = YOS, color = BH_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +   
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "YOS", title = "YOS Scores by BH Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+yosBH_plot
+
+# calculate mean and standard deviation for 1-COR within each cluster
+corBH_summary <- df %>%
+  group_by(BH_cluster) %>%
+  summarize(mean_1_COR = mean(1-COR),
+            sd_1_COR = sd(1-COR))
+corBH_summary
+
+# create jittered strip plot with mean lines
+corBH_plot <- ggplot(df, aes(x = BH_cluster, y = 1-COR, color = BH_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "1-COR", title = "1-COR Scores by BH Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+corBH_plot
+
+# calculate mean and standard deviation for 1-BETA within each cluster
+betaBH_summary <- df %>%
+  group_by(BH_cluster) %>%
+  summarize(mean_1_BETA = mean(1-BETA),
+            sd_1_BETA = sd(1-BETA))
+betaBH_summary
+
+# create the strip plot with mean lines
+betaBH_plot <- ggplot(df, aes(x = BH_cluster, y = 1-BETA, color = BH_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "1-BETA", title = "1-BETA Scores by BH Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+betaBH_plot
+
+# calculate mean and standard deviation for gini index within each cluster
+gini_BH_summary <- df %>%
+  group_by(BH_cluster) %>%
+  summarize(mean_gini = mean(gini),
+            sd_gini = sd(gini))
+
+gini_BH_summary
+
+# create the strip plot with mean lines
+gini_BH_plot <- ggplot(df, aes(x = BH_cluster, y = gini, color = BH_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "Gini", title = "Gini Index by BH Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+gini_BH_plot
+
+```
+
+# 5. K means clustering on TM variables - Validation
+
+After running K-means clustering on the 25 BH variables, we perform 2 levels of validations:
+
+- Level 1: Run Principle Component Analysis (PCA) on the TM variables and plot the clusters against the first 2-3 PCs. We can check whether there's clear margins between the clusters.
+
+- Level 2: Check descriptive qualities of each cluster through variables such as gini index and pre-derived IGM measures (CAT, YOS, COR, BETA).We run ANOVA to see if there's statistically significant difference between each cluster.
+
+## 5.1. K means clustering on TM variables
+
+```{r}
+# create plot of number of clusters vs total within sum of squares
+fviz_nbclust(scale(df[63:87]), kmeans, method = "wss")
+
+# k-means with k = 4
+set.seed(234)
+km.res.TM <- kmeans(scale(df[63:87]), 4, nstart = 25)
+km.res.TM
+
+# append cluster assignment to df
+df <- cbind(df, TM_cluster = factor(km.res.TM$cluster))
+```
+
+## 5.2. Level 1 validation on K means clustering - PCA & visualization
+
+```{r}
+# run PCA and take 2-3 1st PCs to visualize clusters
+pca_TM <- prcomp(scale(df[63:87]))
+summary(pca_TM)
+# 1st 3 PCs make up 70.2% cumulative proportion
+
+# plot 4 TM clusters using 1st 3 PCs
+pca_TM_df <- data.frame(PC1 = pca_TM$x[,1],  
+                     PC2 = pca_TM$x[,2],
+                     PC3 = pca_TM$x[,3],
+                     TM_cluster = df$TM_cluster,
+                     country = df$country)
+
+
+
+ TM_three_PCs <- plot_ly(data = pca_TM_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~factor(TM_cluster),
+        type = "scatter3d", mode = "markers", marker = list(size = 5)) %>%
+  layout(scene = list(xaxis = list(title = "Principle Component 1"),
+                      yaxis = list(title = "Principle Component 2"),
+                      zaxis = list(title = "Principle Component 3")),
+         title = "3D Scatter Plot of 3PCs on TM Clusters")
+TM_three_PCs
+
+```
+
+## 5.3. Level 2 validation on K means clustering - Descriptive using ANOVA and Posthocs
+
+```{r}
+# CAT
+cat_TM_anova <- aov(CAT ~ TM_cluster, data = df)
+summary(cat_TM_anova)
+catTM_posthoc <- TukeyHSD(cat_TM_anova)
+catTM_posthoc
+
+# YOS
+yos_TM_anova <- aov(YOS ~ TM_cluster, data = df)
+summary(yos_TM_anova)
+yosTM_posthoc <- TukeyHSD(yos_TM_anova)
+yosTM_posthoc
+
+# 1-COR
+cor_TM_anova <- aov(1-COR ~ TM_cluster, data = df)
+summary(cor_TM_anova)
+corTM_posthoc <- TukeyHSD(cor_TM_anova)
+corTM_posthoc
+
+# 1-BETA
+beta_TM_anova <- aov(1-BETA ~ TM_cluster, data = df)
+summary(beta_TM_anova)
+betaTM_posthoc <- TukeyHSD(beta_TM_anova)
+betaTM_posthoc
+
+# Gini
+gini_TM_anova <- aov(gini ~ TM_cluster, data = df)
+summary(gini_TM_anova)
+giniTM_posthoc <- TukeyHSD(gini_TM_anova)
+giniTM_posthoc
+
+
+# calculate mean and standard deviation for CAT scores within each cluster
+catTM_summary <- df %>%
+  group_by(TM_cluster) %>%
+  summarize(mean_CAT = mean(CAT),
+            sd_CAT = sd(CAT),
+            n = n()) %>%
+  mutate(se = sd_CAT / sqrt(n),
+         ci_lower = mean_CAT - qt(0.975, n - 1) * se,
+         ci_upper = mean_CAT + qt(0.975, n - 1) * se)
+catTM_summary
+
+# create jittered strip plot with mean points and error bars
+catTM_plot <- ggplot(df, aes(x = factor(TM_cluster), y = CAT, color = TM_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +  
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "CAT", title = "TM CAT Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+catTM_plot
+
+# calculate mean and standard deviation for YOS within each cluster
+yosTM_summary <- df %>%
+  group_by(TM_cluster) %>%
+  summarize(mean_YOS = mean(YOS),
+            sd_YOS = sd(YOS))
+yosTM_summary
+
+# create jittered strip plot with mean lines
+yos_plot <- ggplot(df, aes(x = TM_cluster, y = YOS, color = TM_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +   
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "YOS", title = "YOS Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+yos_plot
+
+# calculate mean and standard deviation for 1-COR within each cluster
+corTM_summary <- df %>%
+  group_by(TM_cluster) %>%
+  summarize(mean_1_COR = mean(1-COR),
+            sd_1_COR = sd(1-COR))
+corTM_summary
+
+# create jittered strip plot with mean lines
+corTM_plot <- ggplot(df, aes(x = TM_cluster, y = 1-COR, color = TM_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "1-COR", title = "1-COR Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+corTM_plot
+# calculate mean and standard deviation for 1-BETA within each cluster
+betaTM_summary <- df %>%
+  group_by(TM_cluster) %>%
+  summarize(mean_1_BETA = mean(1-BETA),
+            sd_1_BETA = sd(1-BETA))
+betaTM_summary
+
+# create jittered strip plot with mean lines
+betaTM_plot <- ggplot(df, aes(x = TM_cluster, y = 1-BETA, color = TM_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "1-BETA", title = "1-BETA Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+betaTM_plot
+
+# calculate mean and standard deviation for gini index within each cluster
+giniTM_summary <- df %>%
+  group_by(TM_cluster) %>%
+  summarize(mean_gini = mean(gini),
+            sd_gini = sd(gini))
+
+giniTM_summary
+
+# create the strip plot with mean lines
+giniTM_plot <- ggplot(df, aes(x = TM_cluster, y = gini, color = TM_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "Gini", title = "Gini Index by TM Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+giniTM_plot
+
+```
+
+# 6. Comparing 2 K means clustering results
+We're creating a matrix to see how BH clusters and TM clusters overlap with each other.
+```{r}
+# we're using a confusion matrix as it uses the sample principle
+confusionMatrix(df$BH_cluster, df$TM_cluster)
+```
