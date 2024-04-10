@@ -9,10 +9,14 @@ This project is part of my Data Analytics capstone course at Denison University.
 ## 3. Prerequisites
 ### 3.1. Key Variables
 - Inequality: measured through the Gini index (The World Bank, 2023)
-- Relative Mobility & Absolute Mobility: specific metrics  to be derived, potentially though one of the following groups
-  + 12 BH variables
-  + 25 TM variables
-- Region
+- Relative absolute mobility metrics derived from previous report by Van Der Weide et al. (2021):
+  - CAT
+  - YOS
+  - 1-COR
+  - 1-BETA
+- Rank-based mobility measures (12 BH variables)
+- Transition matrix measures (25 TM variables)
+- Year of survey collection
 ### 3.2. Softwares
 - Github
 - R version 4.3.3
