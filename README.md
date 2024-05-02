@@ -38,13 +38,20 @@ The GDIM included summary survey data from 153 countries collected between 1991 
 - Transition measures: 25 variables that showed the movements in educational attainment after one generation on the International Standard Classification of Education (ISCED) scale
 - Year of survey collection
 #### 4.2. Global Gini Index Data (GGID; The World Bank, 2024). [Link](https://data.worldbank.org/indicator/SI.POV.GINI?)
-This dataset contained annual Gini indices of 266 countries from 1963 to 2022 (retrieval date: Feb 28th, 2024)
+This dataset contained annual Gini indices of 266 countries from 1963 to 2022 (retrieval date: Feb 28th, 2024).
 - Inequality: measured through the Gini index (The World Bank, 2023)
 - Year of survey collection
-## 5. Documents
+
+## 5. Statistical analyses
+- K-means clustering: unsupervised classification method that partitions data points into a predetermined number of clusters by iteratively assigning each point to the nearest centroid and updating the centroids based on the mean of the points assigned to them. The end results are n clusters (n being pre-determined, in this case n=4)
+- Principle Component Analysis: a dimensionality reduction technique used to transform high-dimensional data into a lower-dimensional space while preserving most of the original variance
+- Analyses of Variance: statistical test that assesses whether the means of two or more groups are statistically different from each other
+- Tukey's post hoc: statistical method used after ANOVA to determine which specific groups differ significantly from each other in terms of their means
+- Mix-method validation (see paper)
+## 6. Documents
 - Code file "IGM project - Code file"
 - HTMP output for code file "IGM project - Code file.html"
-- Paper  [Link](https://docs.google.com/document/d/1yu36w1Ff-UCqprAcB1T-7oHwUTLPF-BXieYC_KsXkBA/edit?usp=sharing)
+- Research Paper
 - Data folder, containing:
   - Data file to make up for Gini NA values "NA gini data"
   - Dataset 1 for Gini index "Gini dataset"
