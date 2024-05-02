@@ -1,0 +1,543 @@
+---
+title: 'IGM final code file'
+author: 'Josh Vo'
+date: 'Feb 28, 2024'
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    latex_engine: xelatex
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# 1. Setup
+```{r Setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+# set working directory
+setwd("C:/Users/vo_j4/Desktop/github data")
+# load  datasets
+IGM_data <-read.csv("GDIM_2023_03.csv")
+gini_data <- read.csv("gini 1991-2017 feb 22, 2024.csv")
+
+# load packages
+library(leaps)
+library(dplyr)
+library(ggplot2)
+library(ggforce)
+library(stats)
+library(ggalt)
+library(plot3D)
+library(plotly)
+library(gridExtra) 
+library(cluster)
+library(factoextra)
+library(caret)
+```
+
+# 2. Cleaning data
+## 2.1. Gini dataset
+```{r}
+head(gini_data)
+# Rename the variables
+colnames(gini_data)[colnames(gini_data) == "X1991..YR1991."] <- "1991"
+colnames(gini_data)[colnames(gini_data) == "X1992..YR1992."] <- "1992"
+colnames(gini_data)[colnames(gini_data) == "X1993..YR1993."] <- "1993"
+colnames(gini_data)[colnames(gini_data) == "X1994..YR1994."] <- "1994"
+colnames(gini_data)[colnames(gini_data) == "X1995..YR1995."] <- "1995"
+colnames(gini_data)[colnames(gini_data) == "X1996..YR1996."] <- "1996"
+colnames(gini_data)[colnames(gini_data) == "X1997..YR1997."] <- "1997"
+colnames(gini_data)[colnames(gini_data) == "X1998..YR1998."] <- "1998"
+colnames(gini_data)[colnames(gini_data) == "X1999..YR1999."] <- "1999"
+colnames(gini_data)[colnames(gini_data) == "X2000..YR2000."] <- "2000"
+colnames(gini_data)[colnames(gini_data) == "X2001..YR2001."] <- "2001"
+colnames(gini_data)[colnames(gini_data) == "X2002..YR2002."] <- "2002"
+colnames(gini_data)[colnames(gini_data) == "X2003..YR2003."] <- "2003"
+colnames(gini_data)[colnames(gini_data) == "X2004..YR2004."] <- "2004"
+colnames(gini_data)[colnames(gini_data) == "X2005..YR2005."] <- "2005"
+colnames(gini_data)[colnames(gini_data) == "X2006..YR2006."] <- "2006"
+colnames(gini_data)[colnames(gini_data) == "X2007..YR2007."] <- "2007"
+colnames(gini_data)[colnames(gini_data) == "X2008..YR2008."] <- "2008"
+colnames(gini_data)[colnames(gini_data) == "X2009..YR2009."] <- "2009"
+colnames(gini_data)[colnames(gini_data) == "X2010..YR2010."] <- "2010"
+colnames(gini_data)[colnames(gini_data) == "X2011..YR2011."] <- "2011"
+colnames(gini_data)[colnames(gini_data) == "X2012..YR2012."] <- "2012"
+colnames(gini_data)[colnames(gini_data) == "X2013..YR2013."] <- "2013"
+colnames(gini_data)[colnames(gini_data) == "X2014..YR2014."] <- "2014"
+colnames(gini_data)[colnames(gini_data) == "X2015..YR2015."] <- "2015"
+colnames(gini_data)[colnames(gini_data) == "X2016..YR2016."] <- "2016"
+colnames(gini_data)[colnames(gini_data) == "X2017..YR2017."] <- "2017"
+
+# empty NAs cells instead of ",,"
+columns_to_process <- colnames(gini_data)[5:ncol(gini_data)] ## specify the columns to be processed (from "1991" to "2017")
+
+for (col in columns_to_process) { ## loop through each specified column and replace ".." with ""
+  gini_data[gini_data[[col]] == "..", col] <- ""
+  gini_data[[col]] <- as.numeric(gini_data[[col]])
+}
+```
+
+## 2.2. IGM dataset
+
+```{r, warning=FALSE}
+
+library(dplyr)
+
+# group by country and calculate the mean for numerical variables in columns 16 to 90
+numerical <- IGM_data %>%
+  group_by(country) %>%
+  summarize(across(15:89, ~mean(., na.rm = TRUE)))
+
+# transfer over categorical variables in columns 1 to 12 because they're all identical
+categorical <- IGM_data  %>%
+  group_by(country) %>%
+  summarize(across(0:11, ~first(.)))
+
+# merge 2 datasets into df
+df <- merge( categorical,numerical, by = "country")
+ 
+# add a new variable "gini" to df
+df$gini <- NA
+
+for (i in 1:nrow(df)) {
+  # extract year, country, code columns
+  country_code <- df$code[i]
+  temp_year <- as.character(df$year[i])
+  
+  # find corresponding column in gini_data
+  col_name <- temp_year  # Assuming column names are just the years
+  
+  # subset gini_data based on country code
+  matching_rows <- gini_data$Country.Code == country_code
+  
+  # check if there are any matching rows
+  if (any(matching_rows)) {
+    # match the Country.Code and assign the value to "gini"
+    df$gini[i] <- gini_data[matching_rows, col_name]
+  } else {
+    # if no matching rows, assign NA
+    df$gini[i] <- "none"
+  }
+}
+
+df$gini
+# quick look at gini
+summary(df$gini)
+
+```
+
+### 2.2.1. Gini NAs processing
+
+```{r}
+# see which countries had NA value and which year that was
+na_countries <- data.frame(cbind(df[is.na(df$gini), c("country", "year")]))
+na_countries
+
+# after manually select the appropriate value for each of those NAs,add them to our dataset 
+# reference Methods section and README file for further details
+
+NA_countries <- c("Afghanistan", "Australia", "Azerbaijan", "Bosnia and Herzegovina", "Cambodia", "Ethiopia", "Japan", "Kenya", "Malawi", "Mali", "Mexico", "Nepal", "New Zealand", "Nicaragua", "Pakistan", "Philippines", "Solomon Islands", "Taiwan, China", "Tajikistan", "Tanzania", "Tunisia", "Uganda", "Uzbekistan", "Venezuela, RB")
+NA_gini <- c(31.6, 32.3, 26.6, 33, 30.76, 35, 32.9, 40.8, 45.5, 33, 47.2, 32.8, 36.2, 46.2, 28.7, 47.7, 37.1,33.8, 34, 37.8, 32.8, 41, 31.2, 39)
+# match country names with corresponding gini values
+for (i in 1:length(NA_countries)) { 
+  df$gini[df$country == NA_countries[i]] <- NA_gini[i]
+}
+df$gini <- as.numeric(df$gini)
+
+```
+
+# 3. EDA
+
+```{r} 
+# checking correlation between all RBased variables
+cor(df[47:58])
+
+ggplot(as.data.frame(as.table(cor(df[47:58]))), aes(Var1, Var2, fill = Freq)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "RBased Variables Correlation Heatmap", x = "", y = "") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# checking correlation between all Trans variables
+cor(df[63:87])
+
+ggplot(as.data.frame(as.table(cor(df[63:87]))), aes(Var1, Var2, fill = Freq)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  labs(title = "Trans Variables Correlation Heatmap", x = "", y = "")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+```
+
+# 4. K means clustering on RBased variables - Validation
+
+After running K-means clustering on the 12 RBased variables, we perform 2 levels of validations:
+
+- Level 1: Run Principle Component Analysis (PCA) on the RBased variables and plot the clusters against the first 2-3 PCs. We can check whether there's clear margins between the clusters.
+
+- Level 2: Check descriptive qualities of each cluster through variables such as gini index and pre-derived IGM measures (CAT, YOS, COR, BETA).We run ANOVA to see if there's statistically significant difference between each cluster.
+
+## 4.1. K means clustering on RBased variables
+
+```{r}
+# create plot of number of clusters vs total within sum of squares
+fviz_nbclust(scale(df[47:58]), kmeans, method = "wss")
+
+# k-means with k = 4
+set.seed(123)
+km.res_RBased <- kmeans(scale(df[47:58]), 4, nstart = 25)
+km.res_RBased
+
+# append cluster assignment to df
+df <- cbind(df, RBased_cluster = factor(km.res_RBased$cluster))
+df$RBased_cluster
+```
+
+## 4.2. Level 1 validation on K means clustering - PCA & visualization
+```{r}
+# run PCA and take 2-3 1st PCs to visualize clusters
+pca_RBased <- prcomp(scale(df[47:58]))
+summary(pca_RBased)
+# 1st 2 PCs make up 84.8% cumulative proportion; 1st  3 make up 93.4%
+
+# plot clusters using 1st 2 PCs
+pcaRBased_df <- data.frame(PC1 = pca_RBased$x[,1],  
+                     PC2 = pca_RBased$x[,2],
+                     PC3 = pca_RBased$x[,3],
+                     RBased_cluster = df$RBased_cluster,
+                     country = df$country)
+
+RBased_two_PCs <- ggplot(pcaRBased_df, aes(x = PC1, y = PC2, color = RBased_cluster)) +
+  geom_point() +
+  labs(title = "RBased Clusters Against first 2 Principle Components",
+       x = "Principle Component 1",
+       y = "Principle Component 2",
+       color = "Clusters based on RBased variables",
+       fill = "Clusters based on RBased variables") +
+  theme_minimal()
+RBased_two_PCs
+
+# plot clusters using 1st 3 PCs
+ RBased_three_PCs <- plot_ly(data = pcaRBased_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~factor(RBased_cluster),
+        type = "scatter3d", mode = "markers", marker = list(size = 5)) %>%
+  layout(scene = list(xaxis = list(title = "Principle Component 1"),
+                      yaxis = list(title = "Principle Component 2"),
+                      zaxis = list(title = "Principle Component 3")),
+         legend = list(title=list(text='<b> Clusters based on RBased variables')),
+         title = "3D Scatter Plot of PCA with RBased Clusters")
+RBased_three_PCs
+```
+
+## 4.3. Level 2 validation on K means clustering - Descriptive using ANOVA and Posthocs
+
+```{r}
+# CAT
+catRBased_anova <- aov(CAT ~ RBased_cluster, data = df)
+summary(catRBased_anova)
+catRBased_posthoc <- TukeyHSD(catRBased_anova)
+catRBased_posthoc
+
+# YOS
+yosRBased_anova <- aov(YOS ~ RBased_cluster, data = df)
+summary(yosRBased_anova)
+yosRBased_posthoc <- TukeyHSD(yosRBased_anova)
+yosRBased_posthoc
+
+# 1-COR
+corRBased_anova <- aov(1-COR ~ RBased_cluster, data = df)
+summary(corRBased_anova)
+corRBased_posthoc <- TukeyHSD(corRBased_anova)
+corRBased_posthoc
+
+# 1-BETA
+betaRBased_anova <- aov(1-BETA ~ RBased_cluster, data = df)
+summary(betaRBased_anova)
+betaRBased_posthoc <- TukeyHSD(betaRBased_anova)
+betaRBased_posthoc
+
+# Gini
+gini_RBased_anova <- aov(gini ~ RBased_cluster, data = df)
+summary(gini_RBased_anova)
+gini_RBased_posthoc <- TukeyHSD(gini_RBased_anova)
+gini_RBased_posthoc
+
+# calculate mean and standard deviation for CAT scores within each cluster
+catRBased_summary <- df %>%
+  group_by(RBased_cluster) %>%
+  summarize(mean_CAT = mean(CAT),
+            sd_CAT = sd(CAT),
+            n = n()) %>%
+  mutate(se = sd_CAT / sqrt(n),
+         ci_lower = mean_CAT - qt(0.975, n - 1) * se,
+         ci_upper = mean_CAT + qt(0.975, n - 1) * se)
+catRBased_summary
+
+# create jittered strip plot with mean points and error bars
+catRBased_plot <- ggplot(df, aes(x = RBased_cluster, y = CAT, color = RBased_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +  
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "CAT", title = "CAT Scores by RBased Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+catRBased_plot
+
+# calculate mean and standard deviation for YOS within each cluster
+yosRBased_summary <- df %>%
+  group_by(RBased_cluster) %>%
+  summarize(mean_YOS = mean(YOS),
+            sd_YOS = sd(YOS))
+yosRBased_summary
+
+# create jittered strip plot with mean lines
+yosRBased_plot <- ggplot(df, aes(x = RBased_cluster, y = YOS, color = RBased_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +   
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "YOS", title = "YOS Scores by RBased Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+yosRBased_plot
+
+# calculate mean and standard deviation for 1-COR within each cluster
+corRBased_summary <- df %>%
+  group_by(RBased_cluster) %>%
+  summarize(mean_1_COR = mean(1-COR),
+            sd_1_COR = sd(1-COR))
+corRBased_summary
+
+# create jittered strip plot with mean lines
+corRBased_plot <- ggplot(df, aes(x = RBased_cluster, y = 1-COR, color = RBased_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "1-COR", title = "1-COR Scores by RBased Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+corRBased_plot
+
+# calculate mean and standard deviation for 1-BETA within each cluster
+betaRBased_summary <- df %>%
+  group_by(RBased_cluster) %>%
+  summarize(mean_1_BETA = mean(1-BETA),
+            sd_1_BETA = sd(1-BETA))
+betaRBased_summary
+
+# create the strip plot with mean lines
+betaRBased_plot <- ggplot(df, aes(x = RBased_cluster, y = 1-BETA, color = RBased_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "1-BETA", title = "1-BETA Scores by RBased Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+betaRBased_plot
+
+# calculate mean and standard deviation for gini index within each cluster
+gini_RBased_summary <- df %>%
+  group_by(RBased_cluster) %>%
+  summarize(mean_gini = mean(gini),
+            sd_gini = sd(gini))
+
+gini_RBased_summary
+
+# create the strip plot with mean lines
+gini_RBased_plot <- ggplot(df, aes(x = RBased_cluster, y = gini, color = RBased_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "Gini", title = "Gini Index by RBased Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+gini_RBased_plot
+
+```
+
+# 5. K means clustering on Trans variables - Validation
+
+After running K-means clustering on the 25 RBased variables, we perform 2 levels of validations:
+
+- Level 1: Run Principle Component Analysis (PCA) on the Trans variables and plot the clusters against the first 2-3 PCs. We can check whether there's clear margins between the clusters.
+
+- Level 2: Check descriptive qualities of each cluster through variables such as gini index and pre-derived IGM measures (CAT, YOS, COR, BETA).We run ANOVA to see if there's statistically significant difference between each cluster.
+
+## 5.1. K means clustering on Trans variables
+
+```{r}
+# create plot of number of clusters vs total within sum of squares
+fviz_nbclust(scale(df[63:87]), kmeans, method = "wss")
+
+# k-means with k = 4
+set.seed(234)
+km.res.Trans <- kmeans(scale(df[63:87]), 4, nstart = 25)
+km.res.Trans
+
+# append cluster assignment to df
+df <- cbind(df, Trans_cluster = factor(km.res.Trans$cluster))
+```
+
+## 5.2. Level 1 validation on K means clustering - PCA & visualization
+
+```{r}
+# run PCA and take 2-3 1st PCs to visualize clusters
+pca_Trans <- prcomp(scale(df[63:87]))
+summary(pca_Trans)
+# 1st 3 PCs make up 70.2% cumulative proportion
+
+# plot 4 Trans clusters using 1st 3 PCs
+pca_Trans_df <- data.frame(PC1 = pca_Trans$x[,1],  
+                     PC2 = pca_Trans$x[,2],
+                     PC3 = pca_Trans$x[,3],
+                     Trans_cluster = df$Trans_cluster,
+                     country = df$country)
+
+
+
+Trans_three_PCs <- plot_ly(data = pca_Trans_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~factor(Trans_cluster),
+        type = "scatter3d", mode = "markers", marker = list(size = 5)) %>%
+  layout(scene = list(xaxis = list(title = "Principle Component 1"),
+                      yaxis = list(title = "Principle Component 2"),
+                      zaxis = list(title = "Principle Component 3")),
+         title = "3D Scatter Plot of 3PCs on Trans Clusters")
+Trans_three_PCs
+
+```
+
+## 5.3. Level 2 validation on K means clustering - Descriptive using ANOVA and Posthocs
+
+```{r}
+# CAT
+cat_Trans_anova <- aov(CAT ~ Trans_cluster, data = df)
+summary(cat_Trans_anova)
+catTrans_posthoc <- TukeyHSD(cat_Trans_anova)
+catTrans_posthoc
+
+# YOS
+yos_Trans_anova <- aov(YOS ~ Trans_cluster, data = df)
+summary(yos_Trans_anova)
+yosTrans_posthoc <- TukeyHSD(yos_Trans_anova)
+yosTrans_posthoc
+
+# 1-COR
+cor_Trans_anova <- aov(1-COR ~ Trans_cluster, data = df)
+summary(cor_Trans_anova)
+corTrans_posthoc <- TukeyHSD(cor_Trans_anova)
+corTrans_posthoc
+
+# 1-BETA
+beta_Trans_anova <- aov(1-BETA ~ Trans_cluster, data = df)
+summary(beta_Trans_anova)
+betaTrans_posthoc <- TukeyHSD(beta_Trans_anova)
+betaTrans_posthoc
+
+# Gini
+gini_Trans_anova <- aov(gini ~ Trans_cluster, data = df)
+summary(gini_Trans_anova)
+giniTrans_posthoc <- TukeyHSD(gini_Trans_anova)
+giniTrans_posthoc
+
+
+# calculate mean and standard deviation for CAT scores within each cluster
+catTrans_summary <- df %>%
+  group_by(Trans_cluster) %>%
+  summarize(mean_CAT = mean(CAT),
+            sd_CAT = sd(CAT),
+            n = n()) %>%
+  mutate(se = sd_CAT / sqrt(n),
+         ci_lower = mean_CAT - qt(0.975, n - 1) * se,
+         ci_upper = mean_CAT + qt(0.975, n - 1) * se)
+catTrans_summary
+
+# create jittered strip plot with mean points and error bars
+catTrans_plot <- ggplot(df, aes(x = factor(Trans_cluster), y = CAT, color = Trans_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +  
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "CAT", title = "Trans CAT Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+catTrans_plot
+
+# calculate mean and standard deviation for YOS within each cluster
+yosTrans_summary <- df %>%
+  group_by(Trans_cluster) %>%
+  summarize(mean_YOS = mean(YOS),
+            sd_YOS = sd(YOS))
+yosTrans_summary
+
+# create jittered strip plot with mean lines
+yos_plot <- ggplot(df, aes(x = Trans_cluster, y = YOS, color = Trans_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) +   
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "YOS", title = "YOS Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+yos_plot
+
+# calculate mean and standard deviation for 1-COR within each cluster
+corTrans_summary <- df %>%
+  group_by(Trans_cluster) %>%
+  summarize(mean_1_COR = mean(1-COR),
+            sd_1_COR = sd(1-COR))
+corTrans_summary
+
+# create jittered strip plot with mean lines
+corTrans_plot <- ggplot(df, aes(x = Trans_cluster, y = 1-COR, color = Trans_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) + 
+  labs(x = "Cluster", y = "1-COR", title = "1-COR Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+corTrans_plot
+# calculate mean and standard deviation for 1-BETA within each cluster
+betaTrans_summary <- df %>%
+  group_by(Trans_cluster) %>%
+  summarize(mean_1_BETA = mean(1-BETA),
+            sd_1_BETA = sd(1-BETA))
+betaTrans_summary
+
+# create jittered strip plot with mean lines
+betaTrans_plot <- ggplot(df, aes(x = Trans_cluster, y = 1-BETA, color = Trans_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "1-BETA", title = "1-BETA Scores by Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+betaTrans_plot
+
+# calculate mean and standard deviation for gini index within each cluster
+giniTrans_summary <- df %>%
+  group_by(Trans_cluster) %>%
+  summarize(mean_gini = mean(gini),
+            sd_gini = sd(gini))
+
+giniTrans_summary
+
+# create the strip plot with mean lines
+giniTrans_plot <- ggplot(df, aes(x = Trans_cluster, y = gini, color = Trans_cluster)) +
+  geom_jitter(width = 0.2, alpha = 0.7) + 
+  stat_summary(fun = mean, geom = "crossbar", position = position_dodge(width = 0.2), color = "black", fill = "black", width = 0.5) +   
+  labs(x = "Cluster", y = "Gini", title = "Gini Index by Trans Cluster") +
+  scale_color_manual(values = c("red", "green", "blue", "orange")) +   
+  theme_minimal() +   
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))   
+giniTrans_plot
+
+```
+
+# 6. Comparing 2 K means clustering results
+We're creating a matrix to see how RBased clusters and Trans clusters overlap with each other.
+```{r}
+# we're using a confusion matrix as it uses the sample principle
+confusionMatrix(df$RBased_cluster, df$Trans_cluster)
+```
